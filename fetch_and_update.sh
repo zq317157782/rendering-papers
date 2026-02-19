@@ -20,13 +20,13 @@ const { chromium } = require('playwright');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Recent';
-  await page.goto(searchUrl, { waitUntil: 'networkidle' });
-  await page.waitForSelector('ul.search__results');
+  await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
+  await page.waitForSelector('ul.search__results', { timeout: 60000 });
   const firstLink = await page.$('ul.search__results li a[data-test-id="search-result-title"]');
   if (!firstLink) { console.error('No results'); process.exit(1); }
   const detailPath = await firstLink.getAttribute('href');
   const detailUrl = new URL(detailPath, 'https://dl.acm.org').href;
-  await page.goto(detailUrl, { waitUntil: 'networkidle' });
+  await page.goto(detailUrl, { waitUntil: 'load', timeout: 60000 });
   // Try PDF button
   const pdfBtn = await page.$('a[title="PDF"]');
   let pdfHref = null;
