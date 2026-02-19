@@ -1,1 +1,2 @@
-# Rendering Papers Repository\n\nHourly collected rendering papers.
+# Rendering Papers Repository
+## Hourly collected rendering papers.
