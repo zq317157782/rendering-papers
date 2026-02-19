@@ -13,65 +13,14 @@ cd "$REPO_DIR"
 # Timestamp for entry
 TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
 
-# ---- Get PDF URL via Playwright ----
-RESULT_JSON=$(node - <<'NODE'
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Cited';
-  await page.goto(searchUrl, { waitUntil: 'load', timeout: 120000 });
-  await page.waitForLoadState('networkidle', { timeout: 120000 });
-  await page.waitForSelector('a[data-test-id="search-result-title"]', { timeout: 120000 });
-  const firstLink = await page.$('ul.search__results li a[data-test-id="search-result-title"]');
-  if (!firstLink) { console.error('No results'); process.exit(1); }
-  const detailPath = await firstLink.getAttribute('href');
-  const detailUrl = new URL(detailPath, 'https://dl.acm.org').href;
-  await page.goto(detailUrl, { waitUntil: 'load', timeout: 120000 });
-  // Try PDF button
-  const pdfBtn = await page.$('a[title="PDF"]');
-  let pdfHref = null;
-  if (pdfBtn) {
-    const href = await pdfBtn.getAttribute('href');
-    pdfHref = href;
-  } else {
-    // fallback to any .pdf link
-    const links = await page.$$eval('a', as => as.map(a=>a.href).filter(h=>h.endsWith('.pdf')));
-    pdfHref = links[0] || null;
-  }
-  if (!pdfHref) { console.error('PDF not found'); process.exit(1); }
-  const fullPdf = new URL(pdfHref, 'https://dl.acm.org').href;
-  // Extract title and abstract for summary
-  let title = null;
-  try { title = await page.$eval('h1[data-test-id="title"]', el => el.innerText.trim()); } catch (e) {}
-  let abstract = null;
-  try { abstract = await page.$eval('div[data-test-id="abstract"]', el => el.innerText.trim()); } catch (e) {}
-  const result = {title: title, abstract: abstract, pdf: fullPdf};
-  console.log(JSON.stringify(result));
-  await browser.close();
-})();
-NODE
-)
-
-# Extract fields from JSON result
-PDF_URL=$(echo "$RESULT_JSON" | python - <<'PY'
-import sys, json, codecs
-obj = json.load(sys.stdin)
-print(obj.get('pdf',''))
-PY
-)
-TITLE=$(echo "$RESULT_JSON" | python - <<'PY'
-import sys, json
-obj = json.load(sys.stdin)
-print(obj.get('title',''))
-PY
-)
-ABSTRACT=$(echo "$RESULT_JSON" | python - <<'PY'
-import sys, json
-obj = json.load(sys.stdin)
-print(obj.get('abstract',''))
-PY
-)
+# ---- Get paper info from arXiv ----
+xml=$(curl -s "https://export.arxiv.org/api/query?search_query=all:rendering&sortBy=submittedDate&max_results=1")
+# Extract title (second <title> element)
+TITLE=$(echo "$xml" | grep -oP "<title>.*</title>" | sed -n 2p | sed -e "s/<\/\?title>//g" | tr -d "\n")
+# Extract abstract
+ABSTRACT=$(echo "$xml" | grep -oP "<summary>.*</summary>" | sed -e "s/<\/\?summary>//g" | tr -d "\n")
+# Extract PDF URL (first .pdf link)
+PDF_URL=$(echo "$xml" | grep -i "application/pdf" | grep -oP 'href="[^"]+' | cut -d'"' -f2)
 
 # If we couldn't obtain a URL, exit gracefully
 if [ -z "${PDF_URL}" ]; then
@@ -95,7 +44,7 @@ fi
 
 # ---- Generate summary using `summarize` CLI (direct URL) ----
 if command -v summarize >/dev/null 2>&1; then
-  SUMMARY=$(summarize "$PDF_URL" --model gpt-oss-120b --length short)
+  SUMMARY=$(summarize "$PDF_URL" --model gpt-oss-120b --length short 2>/dev/null || true)
 else
   SUMMARY="(summary generation tool not available)"
 fi
