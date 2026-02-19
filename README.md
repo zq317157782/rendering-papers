@@ -1,3 +1,4 @@
+* 2026-02-19 09:30 UTC – https://arxiv.org/pdf/2602.16640v1 – Summary: 
 * 2026-02-19 09:13 UTC – https://arxiv.org/pdf/2602.16640v1 – Summary: 
 * 2026-02-19 08:15 UTC – https://arxiv.org/pdf/2602.16640v1 – Summary: 
 * 2026-02-19 07:20 UTC – https://arxiv.org/pdf/1807.08507.pdf – Summary: DeepVoxels proposes a neural volumetric representation of 3D scenes learned from multi‑view images, enabling high‑quality novel view synthesis with view‑dependent effects.
