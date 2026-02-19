@@ -17,17 +17,19 @@ TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
 RESULT_JSON=$(node - <<'NODE'
 const { chromium } = require('playwright');
 (async () => {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+  const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' });
+  const page = await context.newPage();
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
   const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Cited';
-  await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
-  await page.waitForLoadState('networkidle', { timeout: 60000 });
-  await page.waitForSelector('a[data-test-id="search-result-title"]', { timeout: 60000 });
+  await page.goto(searchUrl, { waitUntil: 'load', timeout: 120000 });
+  await page.waitForLoadState('networkidle', { timeout: 120000 });
+  await page.waitForSelector('a[data-test-id="search-result-title"]', { timeout: 120000 });
   const firstLink = await page.$('ul.search__results li a[data-test-id="search-result-title"]');
   if (!firstLink) { console.error('No results'); process.exit(1); }
   const detailPath = await firstLink.getAttribute('href');
   const detailUrl = new URL(detailPath, 'https://dl.acm.org').href;
-  await page.goto(detailUrl, { waitUntil: 'load', timeout: 60000 });
+  await page.goto(detailUrl, { waitUntil: 'load', timeout: 120000 });
   // Try PDF button
   const pdfBtn = await page.$('a[title="PDF"]');
   let pdfHref = null;
@@ -107,11 +109,5 @@ if [ -f README.md ]; then
 else
   echo -e "$ENTRY" > README.md
 fi
-
-# ---- Commit & push ----
-git add .
-git commit -m "Add paper $TIMESTAMP"
-# Push using existing remote (ssh)
-git push origin master || true
 
 echo "Done: $TIMESTAMP"
