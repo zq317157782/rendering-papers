@@ -1,5 +1,5 @@
 * 2026-02-19 06:16 UTC – https://arxiv.org/pdf/2305.00123.pdf – Summary: (to be generated)
-* 2026-02-19 14:30 UTC – https://dl.acm.org/doi/10.1145/3458018.3458180 – Summary: This SIGGRAPH 2020 paper introduced Neural Radiance Fields (NeRF), a novel representation that synthesizes novel views of complex 3D scenes by optimizing a continuous volumetric radiance field using a multi-layer perceptron. NeRF achieved photorealistic rendering quality and spurred a wave of research on view synthesis, scene reconstruction, and controllable rendering, becoming one of the most cited rendering papers in recent SIG conferences.
+* 2026-02-19 15:15 UTC – https://arxiv.org/abs/2003.08934 – Summary: NeRF introduces a neural radiance field representation that models a scene as a continuous 5D function of spatial coordinates and viewing direction. By optimizing this network with sparse input views and differentiable volume rendering, it achieves photorealistic novel view synthesis, surpassing prior methods.
 # Rendering Papers Repository
 
 <!-- This repository now automatically fetches the most popular rendering papers from ACM SIG conferences (sorted by citations) -->
