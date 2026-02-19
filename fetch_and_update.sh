@@ -17,10 +17,8 @@ TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
 RESULT_JSON=$(node - <<'NODE'
 const { chromium } = require('playwright');
 (async () => {
-  const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
-  const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' });
-  const page = await context.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
   const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Cited';
   await page.goto(searchUrl, { waitUntil: 'load', timeout: 120000 });
   await page.waitForLoadState('networkidle', { timeout: 120000 });
@@ -109,5 +107,11 @@ if [ -f README.md ]; then
 else
   echo -e "$ENTRY" > README.md
 fi
+
+# ---- Commit & push ----
+git add .
+git commit -m "Add paper $TIMESTAMP"
+# Push using existing remote (ssh)
+git push origin master || true
 
 echo "Done: $TIMESTAMP"
