@@ -1,3 +1,4 @@
+* 2026-02-19 07:20 UTC – https://arxiv.org/pdf/1807.08507.pdf – Summary: DeepVoxels proposes a neural volumetric representation of 3D scenes learned from multi‑view images, enabling high‑quality novel view synthesis with view‑dependent effects.
 * 2026-02-19 15:15 UTC – https://arxiv.org/abs/2003.08934 – Summary: NeRF introduces a neural radiance field representation that models a scene as a continuous 5D function of spatial coordinates and viewing direction. By optimizing this network with sparse input views and differentiable volume rendering, it achieves photorealistic novel view synthesis, surpassing prior methods.
 # Rendering Papers Repository
 
