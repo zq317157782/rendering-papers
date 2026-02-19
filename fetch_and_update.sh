@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # Ensure we are in the repo directory
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}") && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
 # Timestamp for entry
