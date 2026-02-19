@@ -14,14 +14,15 @@ cd "$REPO_DIR"
 TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
 
 # ---- Get PDF URL via Playwright ----
-PDF_URL=$(node - <<'NODE'
+RESULT_JSON=$(node - <<'NODE'
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Recent';
+  const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Cited';
   await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
-  await page.waitForSelector('ul.search__results', { timeout: 60000 });
+  await page.waitForLoadState('networkidle', { timeout: 60000 });
+  await page.waitForSelector('a[data-test-id="search-result-title"]', { timeout: 60000 });
   const firstLink = await page.$('ul.search__results li a[data-test-id="search-result-title"]');
   if (!firstLink) { console.error('No results'); process.exit(1); }
   const detailPath = await firstLink.getAttribute('href');
@@ -40,10 +41,36 @@ const { chromium } = require('playwright');
   }
   if (!pdfHref) { console.error('PDF not found'); process.exit(1); }
   const fullPdf = new URL(pdfHref, 'https://dl.acm.org').href;
-  console.log(fullPdf);
+  // Extract title and abstract for summary
+  let title = null;
+  try { title = await page.$eval('h1[data-test-id="title"]', el => el.innerText.trim()); } catch (e) {}
+  let abstract = null;
+  try { abstract = await page.$eval('div[data-test-id="abstract"]', el => el.innerText.trim()); } catch (e) {}
+  const result = {title: title, abstract: abstract, pdf: fullPdf};
+  console.log(JSON.stringify(result));
   await browser.close();
 })();
 NODE
+)
+
+# Extract fields from JSON result
+PDF_URL=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json, codecs
+obj = json.load(sys.stdin)
+print(obj.get('pdf',''))
+PY
+)
+TITLE=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json
+obj = json.load(sys.stdin)
+print(obj.get('title',''))
+PY
+)
+ABSTRACT=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json
+obj = json.load(sys.stdin)
+print(obj.get('abstract',''))
+PY
 )
 
 # If we couldn't obtain a URL, exit gracefully
@@ -58,14 +85,23 @@ if grep -Fq "$PDF_URL" README.md; then
   exit 0
 fi
 
-# ---- Download the PDF ----
-FILE_NAME="${TIMESTAMP// /_}.pdf"
+# ---- Download the PDF (preserve original filename) ----
+# Extract the filename from the URL (everything after the last slash)
+ORIG_NAME=$(basename "$PDF_URL")
+FILE_NAME="$ORIG_NAME"
 if command -v curl >/dev/null 2>&1; then
   curl -L -s -o "$FILE_NAME" "$PDF_URL" || echo "Download failed, but will still record entry."
 fi
 
+# ---- Generate summary using `summarize` CLI (direct URL) ----
+if command -v summarize >/dev/null 2>&1; then
+  SUMMARY=$(summarize "$PDF_URL" --model gpt-oss-120b --length short)
+else
+  SUMMARY="(summary generation tool not available)"
+fi
+
 # ---- Create README entry ----
-ENTRY="* $TIMESTAMP – $PDF_URL – Summary: (to be generated)"
+ENTRY="* $TIMESTAMP – $PDF_URL – Summary: $SUMMARY"
 if [ -f README.md ]; then
   echo -e "$ENTRY\n$(cat README.md)" > README.md
 else
