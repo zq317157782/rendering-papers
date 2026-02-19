@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Playwright‑based fetcher for a recent rendering paper.
-# Searches ACM DL for "rendering" (most recent), gets the first paper's PDF, downloads it,
-# and updates the repo with a timestamped entry and placeholder summary.
-# Avoids duplicate downloads by checking if the PDF URL already appears in README.md.
+# Playwright‑based fetcher for rendering papers.
+# Searches ACM Digital Library for "rendering" sorted by Most Cited,
+# iterates through results until it finds a paper not yet downloaded,
+# downloads the PDF (preserving original filename), records the URL in
+# downloaded_papers.txt, generates a short summary, updates README.md,
+# and pushes the changes.
 
 set -euo pipefail
 
@@ -10,37 +12,93 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
+# Ensure the downloaded list exists
+if [ ! -f downloaded_papers.txt ]; then
+  touch downloaded_papers.txt
+fi
+
 # Timestamp for entry
 TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M UTC")
 
-# ---- Get paper info from arXiv ----
-xml=$(curl -s "https://export.arxiv.org/api/query?search_query=all:rendering&sortBy=submittedDate&max_results=1")
-# Extract title (second <title> element)
-TITLE=$(echo "$xml" | grep -oP "<title>.*</title>" | sed -n 2p | sed -e "s/<\/\?title>//g" | tr -d "\n")
-# Extract abstract
-ABSTRACT=$(echo "$xml" | grep -oP "<summary>.*</summary>" | sed -e "s/<\/\?summary>//g" | tr -d "\n")
-# Extract PDF URL (first .pdf link)
-PDF_URL=$(echo "$xml" | grep -i "application/pdf" | grep -oP 'href="[^"]+' | cut -d'"' -f2)
+# ---- Get PDF URL via Playwright (iterate until new paper) ----
+RESULT_JSON=$(node - <<'NODE'
+const { chromium } = require('playwright');
+const fs = require('fs');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  const searchUrl = 'https://dl.acm.org/action/doSearch?AllField=rendering&sort=Most+Cited';
+  await page.goto(searchUrl, { waitUntil: 'load', timeout: 120000 });
+  await page.waitForLoadState('networkidle', { timeout: 120000 });
+  await page.waitForSelector('a[data-test-id="search-result-title"]', { timeout: 120000 });
+  const resultLinks = await page.$$eval('ul.search__results li a[data-test-id="search-result-title"]', els => els.map(e => e.getAttribute('href')));
+  const downloaded = new Set(fs.readFileSync('downloaded_papers.txt', 'utf8').split('\n').filter(Boolean));
+  let found = null;
+  for (const relPath of resultLinks) {
+    const detailUrl = new URL(relPath, 'https://dl.acm.org').href;
+    await page.goto(detailUrl, { waitUntil: 'load', timeout: 120000 });
+    // Locate PDF link
+    const pdfBtn = await page.$('a[title="PDF"]');
+    let pdfHref = null;
+    if (pdfBtn) { pdfHref = await pdfBtn.getAttribute('href'); }
+    if (!pdfHref) {
+      const pdfLinks = await page.$$eval('a', as => as.map(a => a.href).filter(h => h.endsWith('.pdf')));
+      pdfHref = pdfLinks[0] || null;
+    }
+    if (!pdfHref) { continue; }
+    const fullPdf = new URL(pdfHref, 'https://dl.acm.org').href;
+    if (downloaded.has(fullPdf)) { continue; }
+    let title = null;
+    try { title = await page.$eval('h1[data-test-id="title"]', el => el.innerText.trim()); } catch (e) {}
+    let abstract = null;
+    try { abstract = await page.$eval('div[data-test-id="abstract"]', el => el.innerText.trim()); } catch (e) {}
+    found = {title: title, abstract: abstract, pdf: fullPdf};
+    break;
+  }
+  if (!found) {
+    console.error('No new paper found');
+    process.exit(0);
+  }
+  console.log(JSON.stringify(found));
+  await browser.close();
+})();
+NODE
+)
+
+# Extract fields from JSON result
+PDF_URL=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json
+obj = json.load(sys.stdin)
+print(obj.get('pdf',''))
+PY
+)
+TITLE=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json
+obj = json.load(sys.stdin)
+print(obj.get('title',''))
+PY
+)
+ABSTRACT=$(echo "$RESULT_JSON" | python - <<'PY'
+import sys, json
+obj = json.load(sys.stdin)
+print(obj.get('abstract',''))
+PY
+)
 
 # If we couldn't obtain a URL, exit gracefully
-if [ -z "${PDF_URL}" ]; then
+if [ -z "$PDF_URL" ]; then
   echo "Failed to retrieve PDF URL" >&2
   exit 0
 fi
 
-# ---- Duplicate check ----
-if grep -Fq "$PDF_URL" README.md; then
-  echo "Paper already recorded in README, skipping download." >&2
-  exit 0
-fi
-
 # ---- Download the PDF (preserve original filename) ----
-# Extract the filename from the URL (everything after the last slash)
 ORIG_NAME=$(basename "$PDF_URL")
 FILE_NAME="$ORIG_NAME"
 if command -v curl >/dev/null 2>&1; then
   curl -L -s -o "$FILE_NAME" "$PDF_URL" || echo "Download failed, but will still record entry."
 fi
+# Record the PDF URL in the downloaded list
+echo "$PDF_URL" >> downloaded_papers.txt
 
 # ---- Generate summary using `summarize` CLI (direct URL) ----
 if command -v summarize >/dev/null 2>&1; then
